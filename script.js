@@ -35,6 +35,9 @@ class TodoApp {
         // 이벤트 리스너들을 등록합니다
         this.initEventListeners();
         
+        // Firebase에서 데이터 로드
+        this.loadTodosFromFirebase();
+        
         // 달력을 먼저 렌더링합니다
         this.renderCalendar();
         
@@ -399,6 +402,149 @@ class TodoApp {
     }
 
     /**
+     * Firebase에서 할 일 목록을 불러오는 메서드
+     */
+    loadTodosFromFirebase() {
+        if (!window.database) {
+            console.log('Firebase is not initialized yet, loading sample data');
+            this.generateSampleTodos();
+            return;
+        }
+
+        const todosRef = window.database.ref('todos');
+        todosRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                const newTodos = Object.keys(data).map(key => {
+                    const todoData = data[key];
+                    return {
+                        id: parseFloat(key),
+                        title: todoData.title || '',
+                        description: todoData.description || '',
+                        tags: Array.isArray(todoData.tags) ? todoData.tags : [], // tags를 배열로 보장
+                        dueDate: todoData.dueDate || null,
+                        completed: Boolean(todoData.completed),
+                        createdAt: todoData.createdAt || ''
+                    };
+                });
+                
+                // 날짜순으로 정렬
+                newTodos.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+                
+                // 데이터가 실제로 변경된 경우에만 UI 업데이트
+                const hasChanges = JSON.stringify(this.todos) !== JSON.stringify(newTodos);
+                this.todos = newTodos;
+                
+                if (hasChanges) {
+                    // UI 업데이트
+                    this.renderTodaysTodos();
+                    this.render();
+                    if (this.currentView === 'calendar') {
+                        this.renderCalendar();
+                    }
+                }
+                
+                console.log('Todos loaded from Firebase:', this.todos.length, hasChanges ? '(with changes)' : '(no changes)');
+            } else {
+                console.log('No todos found in Firebase, loading sample data');
+                this.generateSampleTodos();
+            }
+        }, (error) => {
+            console.error('Error loading todos from Firebase:', error);
+            this.generateSampleTodos();
+        });
+    }
+
+    /**
+     * Firebase에 할 일을 저장하는 메서드
+     * @param {Object} todo - 저장할 할 일 객체
+     */
+    saveTodoToFirebase(todo) {
+        if (!window.database) {
+            console.error('Firebase is not initialized');
+            return Promise.reject('Firebase not initialized');
+        }
+
+        const todosRef = window.database.ref('todos');
+        const todoData = {
+            title: todo.title || '',
+            description: todo.description || '',
+            tags: Array.isArray(todo.tags) ? todo.tags : [], // undefined를 빈 배열로 처리
+            date: todo.dueDate ? [todo.dueDate] : [], // 사용자 요청에 따라 date를 배열로 저장
+            dueDate: todo.dueDate || null, // undefined를 null로 처리
+            completed: Boolean(todo.completed), // 명시적으로 boolean 변환
+            createdAt: todo.createdAt || ''
+        };
+
+        return todosRef.child(todo.id.toString()).set(todoData)
+            .then(() => {
+                console.log('Todo saved to Firebase:', todo.id);
+            })
+            .catch((error) => {
+                console.error('Error saving todo to Firebase:', error);
+                throw error;
+            });
+    }
+
+    /**
+     * Firebase에서 할 일을 삭제하는 메서드
+     * @param {number} id - 삭제할 할 일의 ID
+     */
+    deleteTodoFromFirebase(id) {
+        if (!window.database) {
+            console.error('Firebase is not initialized');
+            return Promise.reject('Firebase not initialized');
+        }
+
+        const todoRef = window.database.ref('todos/' + id.toString());
+        return todoRef.remove()
+            .then(() => {
+                console.log('Todo deleted from Firebase:', id);
+            })
+            .catch((error) => {
+                console.error('Error deleting todo from Firebase:', error);
+                throw error;
+            });
+    }
+
+    /**
+     * Firebase에서 할 일을 업데이트하는 메서드
+     * @param {Object} todo - 업데이트할 할 일 객체
+     */
+    updateTodoInFirebase(todo) {
+        console.log('🔄 updateTodoInFirebase called for todo:', todo.id, todo.title);
+        
+        if (!window.database) {
+            console.error('❌ Firebase is not initialized');
+            return Promise.reject('Firebase not initialized');
+        }
+
+        const todoRef = window.database.ref('todos/' + todo.id.toString());
+        const todoData = {
+            title: todo.title || '',
+            description: todo.description || '',
+            tags: Array.isArray(todo.tags) ? todo.tags : [], // undefined를 빈 배열로 처리
+            date: todo.dueDate ? [todo.dueDate] : [], // 사용자 요청에 따라 date를 배열로 저장
+            dueDate: todo.dueDate || null, // undefined를 null로 처리
+            completed: Boolean(todo.completed), // 명시적으로 boolean 변환
+            createdAt: todo.createdAt || ''
+        };
+
+        console.log('📝 Data to update in Firebase:', todoData);
+        console.log('📍 Firebase path:', 'todos/' + todo.id.toString());
+
+        return todoRef.update(todoData)
+            .then(() => {
+                console.log('✅ Todo updated in Firebase successfully:', todo.id);
+            })
+            .catch((error) => {
+                console.error('❌ Error updating todo in Firebase:', error);
+                console.error('❌ Error details:', error.message, error.code);
+                throw error;
+            });
+    }
+
+    /**
      * 새로운 할 일을 추가하는 메서드
      * 제목과 본문을 분리하여 저장합니다
      */
@@ -421,19 +567,25 @@ class TodoApp {
             tags: tags
         };
 
-        this.todos.unshift(todo);
-        
-        // 모달 닫기
-        this.closeAddTodoModal();
-        
-        // 화면 업데이트
-        this.renderTodaysTodos();
-        this.render();
-        
-        // 달력 뷰에서 추가한 경우 달력도 업데이트
-        if (this.currentView === 'calendar') {
-            this.renderCalendar();
-        }
+        // Firebase에 저장
+        this.saveTodoToFirebase(todo)
+            .then(() => {
+                console.log('Todo successfully saved to Firebase');
+                // 모달 닫기
+                this.closeAddTodoModal();
+            })
+            .catch((error) => {
+                console.error('Failed to save todo to Firebase:', error);
+                // Firebase 저장 실패 시 로컬에만 저장
+                this.todos.unshift(todo);
+                this.closeAddTodoModal();
+                this.renderTodaysTodos();
+                this.render();
+                if (this.currentView === 'calendar') {
+                    this.renderCalendar();
+                }
+                alert('할 일 저장 중 오류가 발생했습니다. 네트워크 연결을 확인해주세요.');
+            });
     }
 
     /**
@@ -443,23 +595,51 @@ class TodoApp {
     toggleTodo(id) {
         // ID를 숫자로 변환 (문자열로 전달된 경우를 위해)
         const numericId = parseFloat(id);
+        console.log('toggleTodo called with id:', numericId);
         
         // 해당 ID를 가진 할 일을 찾습니다
         const todo = this.todos.find(t => t.id === numericId);
-        if (!todo) return;
+        if (!todo) {
+            console.log('Todo not found for id:', numericId);
+            return;
+        }
+
+        console.log('Found todo:', todo.title, 'current completed:', todo.completed);
 
         // 완료 상태를 토글합니다
-        todo.completed = !todo.completed;
+        const newCompletedState = !todo.completed;
+        console.log('New completed state will be:', newCompletedState);
         
-        // UI를 업데이트합니다
+        // 즉시 UI 업데이트 (Firebase 업데이트 전에)
+        todo.completed = newCompletedState;
         this.renderTodaysTodos();
         this.renderWeeklyTodos();
         this.render();
-
+        
         // 상세보기 모달이 열려있는 경우 업데이트
         if (this.currentDetailTodoId === numericId) {
             this.updateDetailModal();
         }
+        
+        console.log('About to update Firebase for todo:', numericId);
+        
+        // Firebase에 업데이트
+        this.updateTodoInFirebase(todo)
+            .then(() => {
+                console.log('✅ Todo completion status successfully updated in Firebase');
+            })
+            .catch((error) => {
+                console.error('❌ Failed to update todo in Firebase:', error);
+                // Firebase 업데이트 실패 시 상태 되돌리기
+                todo.completed = !newCompletedState;
+                this.renderTodaysTodos();
+                this.renderWeeklyTodos();
+                this.render();
+                if (this.currentDetailTodoId === numericId) {
+                    this.updateDetailModal();
+                }
+                alert('할 일 상태 변경 중 오류가 발생했습니다. 네트워크 연결을 확인해주세요.');
+            });
     }
 
     /**
@@ -475,22 +655,30 @@ class TodoApp {
             return;
         }
 
-        // 해당 ID를 가진 할 일의 인덱스를 찾습니다
-        const index = this.todos.findIndex(t => t.id === numericId);
-        if (index === -1) return;
-
-        // 할 일을 배열에서 제거합니다
-        this.todos.splice(index, 1);
-        
-        // UI를 업데이트합니다
-        this.renderTodaysTodos();
-        this.renderWeeklyTodos();
-        this.render();
-
-        // 상세보기 모달이 열려있는 경우 닫기
-        if (this.currentDetailTodoId === numericId) {
-            this.closeDetailModal();
-        }
+        // Firebase에서 삭제
+        this.deleteTodoFromFirebase(numericId)
+            .then(() => {
+                console.log('Todo successfully deleted from Firebase');
+                // 상세보기 모달이 열려있는 경우 닫기
+                if (this.currentDetailTodoId === numericId) {
+                    this.closeDetailModal();
+                }
+            })
+            .catch((error) => {
+                console.error('Failed to delete todo from Firebase:', error);
+                // Firebase 삭제 실패 시 로컬에서만 삭제
+                const index = this.todos.findIndex(t => t.id === numericId);
+                if (index !== -1) {
+                    this.todos.splice(index, 1);
+                    this.renderTodaysTodos();
+                    this.renderWeeklyTodos();
+                    this.render();
+                    if (this.currentDetailTodoId === numericId) {
+                        this.closeDetailModal();
+                    }
+                }
+                alert('할 일 삭제 중 오류가 발생했습니다. 네트워크 연결을 확인해주세요.');
+            });
     }
 
     /**
@@ -1317,6 +1505,14 @@ class TodoApp {
 
         console.log('New values:', { title, description, dueDate, tags });
 
+        // 기존 값들 백업 (Firebase 업데이트 실패 시 복원용)
+        const originalValues = {
+            title: todo.title,
+            description: todo.description,
+            dueDate: todo.dueDate,
+            tags: Array.isArray(todo.tags) ? [...todo.tags] : [] // tags가 배열이 아닐 경우 빈 배열로 처리
+        };
+
         // 할 일 정보 업데이트
         todo.title = title;
         todo.description = description;
@@ -1325,25 +1521,48 @@ class TodoApp {
 
         console.log('Todo updated:', todo);
         
-        // 모달 닫기
-        this.closeEditModal();
-        console.log('Edit modal closed');
-        
-        // 화면 업데이트
-        this.renderTodaysTodos();
-        this.renderWeeklyTodos();
-        this.render();
-        console.log('UI updated');
-        
-        // 달력 뷰에서 수정한 경우 달력도 업데이트
-        if (this.currentView === 'calendar') {
-            this.renderCalendar();
-            console.log('Calendar updated');
-        }
+        // Firebase에 업데이트
+        this.updateTodoInFirebase(todo)
+            .then(() => {
+                console.log('Todo successfully updated in Firebase');
+                // 모달 닫기
+                this.closeEditModal();
+                console.log('Edit modal closed');
+                
+                // 상세 모달이 열려있었다면 다시 열기
+                this.openDetailModal(todoId);
+                console.log('Detail modal reopened');
+            })
+            .catch((error) => {
+                console.error('Failed to update todo in Firebase:', error);
+                // Firebase 업데이트 실패 시 원래 값으로 복원
+                todo.title = originalValues.title;
+                todo.description = originalValues.description;
+                todo.dueDate = originalValues.dueDate;
+                todo.tags = originalValues.tags;
+                
+                // 모달 닫기
+                this.closeEditModal();
+                console.log('Edit modal closed');
+                
+                // 화면 업데이트
+                this.renderTodaysTodos();
+                this.renderWeeklyTodos();
+                this.render();
+                console.log('UI updated');
+                
+                // 달력 뷰에서 수정한 경우 달력도 업데이트
+                if (this.currentView === 'calendar') {
+                    this.renderCalendar();
+                    console.log('Calendar updated');
+                }
 
-        // 상세 모달이 열려있었다면 다시 열기
-        this.openDetailModal(todoId);
-        console.log('Detail modal reopened');
+                // 상세 모달이 열려있었다면 다시 열기
+                this.openDetailModal(todoId);
+                console.log('Detail modal reopened');
+                
+                alert('할 일 수정 중 오류가 발생했습니다. 네트워크 연결을 확인해주세요.');
+            });
     }
 }
 

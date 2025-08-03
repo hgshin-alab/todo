@@ -254,5 +254,28 @@
     </div>
 
     <script src="script.js"></script>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    
+    <!-- Firebase 초기화 -->
+    <script>
+        // Firebase 설정
+        const firebaseConfig = {
+            apiKey: "AIzaSyD8OvroE-H6gt6mfrbanBF74yPV9aUGOho",
+            authDomain: "todo-c3fc7.firebaseapp.com",
+            databaseURL: "https://todo-c3fc7-default-rtdb.firebaseio.com",
+            projectId: "todo-c3fc7",
+            storageBucket: "todo-c3fc7.firebasestorage.app",
+            messagingSenderId: "576673043218",
+            appId: "1:576673043218:web:ddb0d72d9054ec1fe0d9cb",
+            measurementId: "G-VM37D1NBZM"
+        };
+
+        // Firebase 초기화
+        firebase.initializeApp(firebaseConfig);
+        window.database = firebase.database();
+    </script>
 </body>
 </html> 
