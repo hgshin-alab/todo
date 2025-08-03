@@ -11,13 +11,8 @@ class TodoApp {
      * 어플리케이션 초기화 시 실행되는 메서드
      */
     constructor() {
-        // 로컬 스토리지에서 기존 할 일 목록을 불러옵니다
-        this.todos = this.loadTodos();
-        
-        // 샘플 데이터 생성 (2025년 6-7월)
-        if (this.todos.length === 0) {
-            this.generateSampleTodos();
-        }
+        // 메모리에서 할 일 목록을 초기화합니다
+        this.todos = [];
         
         // 현재 선택된 필터 상태 (all, pending, completed, today, overdue)
         this.currentFilter = 'all';
@@ -119,9 +114,6 @@ class TodoApp {
 
         // 날짜순으로 정렬
         this.todos.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-        
-        // 로컬 스토리지에 저장
-        this.saveTodos();
     }
 
     /**
@@ -430,7 +422,6 @@ class TodoApp {
         };
 
         this.todos.unshift(todo);
-        this.saveTodos();
         
         // 모달 닫기
         this.closeAddTodoModal();
@@ -459,9 +450,6 @@ class TodoApp {
 
         // 완료 상태를 토글합니다
         todo.completed = !todo.completed;
-        
-        // 로컬 스토리지에 저장합니다
-        this.saveTodos();
         
         // UI를 업데이트합니다
         this.renderTodaysTodos();
@@ -493,9 +481,6 @@ class TodoApp {
 
         // 할 일을 배열에서 제거합니다
         this.todos.splice(index, 1);
-        
-        // 로컬 스토리지에 저장합니다
-        this.saveTodos();
         
         // UI를 업데이트합니다
         this.renderTodaysTodos();
@@ -997,30 +982,9 @@ class TodoApp {
         return div.innerHTML;
     }
 
-    /**
-     * 로컬 스토리지에서 할 일 목록을 불러오는 메서드
-     * @returns {Array} 저장된 할 일 배열 (없으면 빈 배열)
-     */
-    loadTodos() {
-        try {
-            const saved = localStorage.getItem('todos');
-            return saved ? JSON.parse(saved) : [];
-        } catch (error) {
-            console.error('할 일 목록을 불러오는데 실패했습니다:', error);
-            return [];
-        }
-    }
 
-    /**
-     * 현재 할 일 목록을 로컬 스토리지에 저장하는 메서드
-     */
-    saveTodos() {
-        try {
-            localStorage.setItem('todos', JSON.stringify(this.todos));
-        } catch (error) {
-            console.error('할 일 목록을 저장하는데 실패했습니다:', error);
-        }
-    }
+
+
 
     /**
      * 특정 날짜에 할 일을 추가하기 위해 할 일 추가 모달을 여는 메서드
@@ -1360,9 +1324,6 @@ class TodoApp {
         todo.tags = tags;
 
         console.log('Todo updated:', todo);
-
-        this.saveTodos();
-        console.log('Todos saved');
         
         // 모달 닫기
         this.closeEditModal();
